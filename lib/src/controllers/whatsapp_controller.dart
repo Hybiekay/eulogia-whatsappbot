@@ -1,147 +1,182 @@
-import 'dart:io';
-
-import 'package:flint_dart/flint_dart.dart';
 import 'dart:convert';
-import '../services/whatsapp_pricing_service.dart';
-import '../services/whatsapp_support_service.dart';
-import '../services/whatsapp_contact_service.dart';
-import '../services/whatsapp_welcome_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:chatbot/src/models/chat_conversation.dart';
+import 'package:chatbot/src/models/chat_message.dart';
+import 'package:chatbot/src/services/whatsapp_welcome_service.dart';
+import 'package:flint_dart/flint_dart.dart';
 
 class WhatsappController {
-  // ✅ FlintClient acts like `http` but with better handling
-  final client = FlintClient(baseUrl: "https://graph.facebook.com/v22.0/");
-
-  // ✅ Gemini AI endpoint (replace with your API proxy or Gemini API endpoint)
-  final aiClient = FlintClient(
-      baseUrl:
-          "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent");
-
-  final pricingService = WhatsappPricingService();
-  final supportService = WhatsappSupportService();
-  final contactService = WhatsappContactService();
-  final welcomeService = WhatsappWelcomeService();
-
-  // ✅ Environment values
+  final replyService = ChatReplyService();
   final String verifyToken = FlintEnv.get('WHATSAPP_VERIFY_TOKEN');
   final String phoneNumberId = FlintEnv.get('WHATSAPP_PHONE_NUMBER_ID');
   final String accessToken = FlintEnv.get('WHATSAPP_ACCESS_TOKEN');
-  final String geminiApiKey = FlintEnv.get('GEMINI_API_KEY');
 
-  // 🔹 Webhook verification for WhatsApp Cloud API
+  /// Webhook verification
   Future<Response> verifyWebhook(Request req, Response res) async {
-    print("🌍 [Webhook] Verification request received.");
     final mode = req.query['hub.mode'];
     final challenge = req.query['hub.challenge'];
     final token = req.query['hub.verify_token'];
 
     if (mode == 'subscribe' && token == verifyToken) {
-      print("✅ Webhook verified successfully!");
       return res.send(challenge ?? '');
-    } else {
-      print("❌ Webhook verification failed!");
-      return res.status(403).send("Verification failed");
     }
+    return res.status(403).send("Verification failed");
   }
 
-  // 🔹 Receive WhatsApp messages from Meta webhook
+  /// Receive incoming WhatsApp message
   Future<Response> receiveMessage(Request req, Response res) async {
-    print("📨 [Webhook] POST / received");
     final body = await req.json();
-    print("🧾 Incoming body: ${jsonEncode(body)}");
+    print('📨 Received webhook: ${body.toString()}');
 
-    if (body != null && body['entry'] != null) {
+    // Ignore status updates (delivered, read, failed, etc.)
+    if (_isStatusUpdate(body)) {
+      print('📊 Ignoring status update');
+      return res.json({'status': 'status_update_ignored'});
+    }
+
+    if (body['entry'] != null) {
       final entry = body['entry'][0];
       final changes = entry['changes'][0];
       final messages = changes['value']['messages'];
 
-      if (messages != null) {
+      if (messages != null && messages.isNotEmpty) {
         final msg = messages[0];
+        final messageId = msg['id'];
         final from = msg['from'];
         final text = msg['text']?['body']?.trim() ?? '';
+        final timestamp = msg['timestamp'];
 
-        print("📩 Message from $from: $text");
+        // Get customer name safely
+        String customerName = 'Unknown';
+        final contacts = changes['value']['contacts'];
+        if (contacts != null && contacts.isNotEmpty) {
+          customerName = contacts[0]['profile']['name'] ?? 'Unknown';
+        }
 
-        final reply = await _generateReply(text);
-        print("🤖 Generated reply: $reply");
+        // Check if message is too old (more than 5 minutes)
+        if (_isOldMessage(timestamp)) {
+          print('🕒 Ignoring old message from $timestamp');
+          return res.json({'status': 'old_message_ignored'});
+        }
 
-        await sendMessage(from, reply);
-      } else {
-        print("⚠️ No message field in webhook payload.");
+        // Check if we've already processed this WhatsApp message ID
+        final existingMessages =
+            await ChatMessage().where('whatsapp_message_id', messageId);
+        if (existingMessages.isNotEmpty) {
+          print('🔄 Skipping duplicate WhatsApp message: $messageId');
+          return res.json({'status': 'duplicate_ignored'});
+        }
+
+        print('💬 Processing new message from $customerName $from: $text');
+
+        await handle(from, customerName, text, messageId);
+        print('✅ Successfully processed message from $from');
       }
-    } else {
-      print("⚠️ Invalid webhook payload: no entry field found.");
     }
 
     return res.json({'status': 'received'});
   }
 
-  // 🔹 Reply router — directs messages to proper service or Gemini AI
-  Future<String> _generateReply(String message) async {
-    final lower = message.toLowerCase();
+  Future<void> handle(String from, String customerName, String text,
+      String whatsappMessageId) async {
+    final conversation = await _getOrCreateConversation(from, customerName);
 
-    switch (lower) {
-      case "hi":
-      case "hello":
-      case "menu":
-      case "hey":
-      case "hy":
-        return welcomeService.getReply();
-      case "1":
-      case "pricing":
-        return pricingService.getReply();
-      case "2":
-      case "support":
-        return supportService.getReply();
-      case "3":
-      case "contact":
-        return contactService.getReply();
-      default:
-        // 🚀 Use Gemini AI for other queries
-        final aiReply = await _askGemini(message);
-        return aiReply ??
-            "🤖 I didn’t understand that. Please reply with:\n1. Pricing\n2. Support\n3. Contact Info";
-    }
+    // Save user message with WhatsApp message ID
+    await ChatMessage().create({
+      "chat_id": 'chat_${conversation.id}',
+      "sender_id": from,
+      "sender_type": "human",
+      "message": text,
+      "whatsapp_message_id": whatsappMessageId, // Store the WhatsApp ID
+      "created_at": DateTime.now(),
+    });
+
+    // Generate and send reply
+    final reply = await replyService.generateReply(
+      text,
+      conversation: conversation,
+      customerId: from,
+    );
+
+    // Save AI reply
+    await ChatMessage().create({
+      "chat_id": 'chat_${conversation.id}',
+      "sender_id": 'ai',
+      "sender_type": "ai",
+      "message": formatMarkdownForWhatsApp(reply),
+      "created_at": DateTime.now(),
+    });
+
+    // Update conversation
+    conversation.lastMessageAt = DateTime.now();
+    conversation.updatedAt = DateTime.now();
+    await conversation.save();
+
+    // Send reply via WhatsApp
+    await _sendMessage(from, reply);
   }
 
-  // 🔹 Ask Gemini AI
-  Future<String?> _askGemini(String prompt) async {
+  /// Create or get existing conversation
+  Future<ChatConversation> _getOrCreateConversation(
+      String customerId, String customerName) async {
+    final list = await ChatConversation().where('customer_id', customerId);
+    ChatConversation? conversation = list.isNotEmpty ? list.first : null;
+
+    if (conversation == null) {
+      conversation = ChatConversation()
+        ..customerName = customerName
+        ..customerId = customerId
+        ..escalated = false
+        ..status = 'active'
+        ..staffId = ''
+        ..startedAt = DateTime.now()
+        ..lastMessageAt = DateTime.now()
+        ..createdAt = DateTime.now()
+        ..updatedAt = DateTime.now();
+      return await conversation.save() ?? conversation;
+    }
+    return conversation;
+  }
+
+  /// Check if webhook is a status update (not a new message)
+  bool _isStatusUpdate(Map<String, dynamic> body) {
+    final entry = body['entry']?[0];
+    final changes = entry?['changes']?[0];
+    final statuses = changes?['value']?['statuses'];
+    return statuses != null && statuses.isNotEmpty;
+  }
+
+  /// Check if message is too old (prevents processing historical messages)
+  bool _isOldMessage(dynamic timestamp) {
     try {
-      final context = await File('data/eulogia_docs.md').readAsString();
+      // Handle both string and int timestamps
+      int timestampInt;
+      if (timestamp is String) {
+        timestampInt = int.parse(timestamp);
+      } else if (timestamp is int) {
+        timestampInt = timestamp;
+      } else {
+        // If we can't parse it, assume it's not old
+        return false;
+      }
 
-      final response = await aiClient.post(
-        "?key=$geminiApiKey",
-        headers: {"Content-Type": "application/json"},
-        body: {
-          "contents": [
-            {
-              "parts": [
-                {
-                  "text":
-                      """You are Eulogia Technologies' AI assistant. Reply short, friendly, and professional. 
-Answer only questions related to Eulogia Technologies, EuCloudHost, Euvate, SchoolHQ.ng, Training Class, and Flint Dart.
-If asked about issues or help, suggest contacting support@eulogia.net or hello@eulogia.net.
-User said: "$prompt"."""
-                }
-              ]
-            }
-          ]
-        },
-      );
+      final messageTime =
+          DateTime.fromMillisecondsSinceEpoch(timestampInt * 1000);
+      final now = DateTime.now();
+      final difference = now.difference(messageTime);
 
-      final data = response.data;
-      final text = data["candidates"]?[0]?["content"]?["parts"]?[0]?["text"];
-      return text?.trim();
+      // Ignore messages older than 5 minutes
+      return difference.inMinutes > 5;
     } catch (e) {
-      print("❌ Gemini AI error: $e");
-      return null;
+      print('⚠️ Error parsing timestamp $timestamp: $e');
+      return false; // If we can't parse, don't ignore the message
     }
   }
 
-  // 🔹 Send message using FlintClient (Meta WhatsApp Cloud API)
-  Future<void> sendMessage(String to, String message) async {
-    final endpoint = "$phoneNumberId/messages";
-    print("🚀 Sending message to $to via endpoint: $endpoint");
-
+  /// Send WhatsApp message with error handling for 24-hour rule using http package
+  Future<void> _sendMessage(String to, String message) async {
+    final url =
+        Uri.parse('https://graph.facebook.com/v22.0/$phoneNumberId/messages');
     final safeMessage = message.replaceAll('\r', '').replaceAll('₦', 'NGN');
 
     final payload = {
@@ -152,8 +187,8 @@ User said: "$prompt"."""
     };
 
     try {
-      final response = await client.post(
-        endpoint,
+      final response = await http.post(
+        url,
         headers: {
           "Authorization": "Bearer $accessToken",
           "Content-Type": "application/json; charset=UTF-8",
@@ -162,13 +197,45 @@ User said: "$prompt"."""
       );
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        print(
-            "⚠️ Failed to send message: ${response.statusCode} - ${response.error}");
+        final errorBody = jsonDecode(response.body);
+        final errorCode = errorBody['error']?['code'];
+
+        if (errorCode == 131047) {
+          print(
+              '⚠️ Message failed: 24-hour rule violation. Customer needs to message first.');
+        } else {
+          print(
+              '⚠️ Failed to send message: ${response.statusCode} - ${errorBody['error']?['message']}');
+        }
       } else {
-        print("✅ Message successfully sent to $to");
+        print("✅ Message sent to $to");
       }
     } catch (e) {
       print("❌ Error sending WhatsApp message: $e");
     }
   }
+}
+
+String formatMarkdownForWhatsApp(String text) {
+  if (text.isEmpty) return text;
+
+  // 1. Convert headings (### or ## or #) to bold
+  text = text.replaceAllMapped(
+      RegExp(r'^(#{1,6})\s*(.+)$', multiLine: true), (m) => '*${m[2]}*');
+
+  // 2. Convert bold **text** to WhatsApp bold
+  text = text.replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => '*${m[1]}*');
+
+  // 3. Convert italic _text_ to WhatsApp italic
+  text = text.replaceAllMapped(RegExp(r'_(.+?)_'), (m) => '_${m[1]}_');
+
+  // 4. Convert list items starting with * or - to WhatsApp-friendly -
+  text = text.replaceAllMapped(
+      RegExp(r'^\s*[\*\-]\s+(.+)$', multiLine: true), (m) => '- ${m[1]}');
+
+  // 5. Optionally trim extra spaces
+  text = text.replaceAll(RegExp(r'\n{2,}'), '\n'); // collapse multiple newlines
+  text = text.trim();
+
+  return text;
 }

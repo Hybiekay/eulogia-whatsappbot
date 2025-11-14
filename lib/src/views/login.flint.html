@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" x-data="loginForm()">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Login</title>
+    <link href="./css/output.css" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+
+    <div class="bg-white shadow-lg rounded-2xl p-8 w-full max-w-md">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-6">Staff Login</h1>
+
+        <form @submit.prevent="handleLogin" class="space-y-5">
+            <!-- Staff ID -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Staff ID</label>
+                <input type="text" x-model="staffId" placeholder="Enter your Staff ID"
+                    class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Password -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input type="password" x-model="password" placeholder="Enter your password"
+                    class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <!-- Error Message -->
+            <p x-show="error" x-text="error" class="text-red-500 text-sm mt-1"></p>
+
+            <!-- Login Button -->
+            <button type="submit" :disabled="loading"
+                class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-all duration-200 disabled:opacity-50">
+                <span x-show="!loading">Login</span>
+                <span x-show="loading" class="flex items-center justify-center space-x-2">
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none"
+                        viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                        </circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span>Logging in...</span>
+                </span>
+            </button>
+        </form>
+
+        <p class="text-center text-sm text-gray-500 mt-4">
+            Only authorized staff can access the chat system.
+        </p>
+    </div>
+
+    <script>
+        function loginForm() {
+            return {
+                staffId: '',
+                password: '',
+                loading: false,
+                error: '',
+                async handleLogin() {
+                    this.error = '';
+
+                    if (!this.staffId.trim() || !this.password.trim()) {
+                        this.error = 'Please enter both Staff ID and Password.';
+                        return;
+                    }
+
+                    this.loading = true;
+
+                    try {
+                        // Example: send login request to Flint backend
+                        const res = await fetch('/staff/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                staff_id: this.staffId,
+                                password: this.password
+                            })
+                        });
+
+                        const data = await res.json();
+                        this.loading = false;
+                        console.log(data);
+                        if (data.status) {
+                            alert(`Welcome, ${this.staffId}! Redirecting to chat...`);
+                            window.location.href = '/chat.html';
+                        } else {
+                            this.error = data.message || 'Invalid credentials. Please try again.';
+                        }
+
+                    } catch (e) {
+                        this.loading = false;
+                        this.error = 'Unable to connect. Please try again later.';
+                    }
+                }
+            };
+        }
+    </script>
+
+</body>
+
+</html>
