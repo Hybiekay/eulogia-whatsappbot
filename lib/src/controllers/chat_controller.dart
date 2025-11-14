@@ -9,7 +9,7 @@ class ChatController {
   Future<ChatConversation> getOrCreateConversation(String customerId) async {
     // Fetch all conversations for this customer
     final conversations =
-        await ChatConversation().where('customer_id', customerId);
+        await ChatConversation().where('customer_id', customerId).get();
 
     // Take the first one if exists
     ChatConversation? conversation =
@@ -46,7 +46,7 @@ class ChatController {
     // Update conversation lastMessageAt
     final convId = int.tryParse(chatId.replaceFirst('chat_', ''));
     if (convId != null) {
-      final conversations = await ChatConversation().where('id', convId);
+      final conversations = await ChatConversation().where('id', convId).get();
       if (conversations.isNotEmpty) {
         final conversation = conversations.first;
         conversation.lastMessageAt = DateTime.now();
@@ -65,7 +65,8 @@ class ChatController {
 
     final recent = <Map<String, dynamic>>[];
     for (var conv in conversations) {
-      final messages = await ChatMessage().where('chat_id', 'chat_${conv.id}');
+      final messages =
+          await ChatMessage().where('chat_id', 'chat_${conv.id}').get();
       final lastMsg = messages.isNotEmpty ? messages.last : null;
 
       recent.add({
@@ -99,7 +100,7 @@ class ChatController {
           status: 400);
     }
 
-    final messages = await ChatMessage().where('chat_id', chatId);
+    final messages = await ChatMessage().where('chat_id', chatId).get();
 
     final data = messages.asMaps();
     return res.json({

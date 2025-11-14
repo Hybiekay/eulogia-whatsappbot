@@ -55,6 +55,9 @@
     </div>
 
     <script>
+        if (localStorage.getItem('staffName')) {
+            window.location.href = '/chat';
+        }
         function loginForm() {
             return {
                 staffId: '',
@@ -72,7 +75,7 @@
                     this.loading = true;
 
                     try {
-                        // Example: send login request to Flint backend
+                        // Send login request to Flint backend
                         const res = await fetch('/staff/login', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -84,10 +87,17 @@
 
                         const data = await res.json();
                         this.loading = false;
-                        console.log(data);
+
                         if (data.status) {
-                            alert(`Welcome, ${this.staffId}! Redirecting to chat...`);
-                            window.location.href = '/chat.html';
+                            // Save staff info to localStorage
+                            localStorage.setItem('staffId', this.staffId);
+                            // Optionally save any other data returned by backend
+
+                            if (data.data.name) localStorage.setItem('staffName', data.data.name);
+                            if (data.data.role) localStorage.setItem('staffRole', data.data.role);
+
+                            // Redirect to chat
+                            window.location.href = '/chat';
                         } else {
                             this.error = data.message || 'Invalid credentials. Please try again.';
                         }
@@ -100,6 +110,7 @@
             };
         }
     </script>
+
 
 </body>
 

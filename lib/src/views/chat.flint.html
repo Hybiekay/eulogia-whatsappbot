@@ -682,10 +682,10 @@
             </div>
 
             <div class="user-info">
-                <div class="user-avatar">JD</div>
+                <div class="user-avatar" x-text="getInitials(staffName)"></div>
                 <div class="user-details">
-                    <div class="user-name">John Doe</div>
-                    <div class="user-role">Senior Support Agent</div>
+                    <div class="user-name" x-text="staffName"></div>
+                    <div class="user-role" x-text="staffRole"></div>
                 </div>
                 <button @click="logout" class="chat-action-btn" title="Logout">
                     <i class="fas fa-sign-out-alt"></i>
@@ -812,15 +812,32 @@
 
     <script>
         function chatApp() {
+
+
             return {
                 recentChats: [],
                 selectedChat: null,
                 newMessage: '',
                 isMobile: window.innerWidth < 768,
                 showSidebar: window.innerWidth >= 768,
+                staffId: '',
+                staffName: '',
+                staffRole: '',
+                // Make sure getInitials is defined here in the data object
+                getInitials(name) {
+                    if (!name) return 'SA';
+                    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+                },
 
                 init() {
-                    console.log('🚀 Initializing Staff Chat App...');
+                    this.staffId = localStorage.getItem('staffId');
+                    this.staffName = localStorage.getItem('staffName') || '';
+                    this.staffRole = localStorage.getItem('staffRole') || '';
+
+                    if (!this.staffId) {
+                        window.location.href = '/';
+                        return;
+                    }
                     this.fetchRecentChats();
 
                     // Add resize listener
@@ -1120,11 +1137,21 @@
                 logout() {
                     if (confirm('Are you sure you want to logout?')) {
                         console.log('👋 Logging out...');
+                        // Clear all staff data from localStorage
+                        localStorage.removeItem('staffId');
+                        localStorage.removeItem('staffName');
+                        localStorage.removeItem('staffRole');
+                        window.location.href = '/';
+
                         // In a real app, this would redirect to login page
                         // window.location.href = '/login.html';
                         this.showNotification('Logging out...', 'info');
                     }
                 }
+
+
+
+
             };
         }
 

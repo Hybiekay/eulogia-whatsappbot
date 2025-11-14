@@ -66,6 +66,8 @@
         </p>
     </div>
 
+    <!-- ... same head and form as before ... -->
+
     <script>
         function signupForm() {
             return {
@@ -107,19 +109,24 @@
                         this.loading = false;
 
                         if (result.status) {
+                            // Save JWT token to localStorage
+                            localStorage.setItem('staffToken', result.token);
+                            localStorage.setItem('staffName', this.name);
+
                             alert(`Welcome ${this.name}! Account created successfully.`);
-                            window.location.href = '/login.html';
+                            window.location.href = '/dashboard.html'; // redirect to dashboard
                         } else {
                             this.error = result.message || 'Signup failed. Please try again.';
                         }
                     } catch (err) {
                         this.loading = false;
-                        this.error = 'Network error. Please try again later.';
+                        this.error = err.message || 'Network error. Please try again later.';
                     }
                 }
             };
         }
     </script>
+
 
 </body>
 

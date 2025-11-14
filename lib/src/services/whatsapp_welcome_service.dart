@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:chatbot/src/models/chat_conversation.dart';
 import 'package:chatbot/src/models/chat_message.dart';
 import 'package:flint_dart/flint_dart.dart';
@@ -391,7 +390,7 @@ Type *close* anytime to end the conversation.""";
 
     try {
       final allConversations =
-          await ChatConversation().where("customer_id", customerId);
+          await ChatConversation().where("customer_id", customerId).get();
 
       // Filter for escalated conversations that are NOT the current one and are active
       return allConversations
@@ -409,7 +408,7 @@ Type *close* anytime to end the conversation.""";
 
   Future<String?> _getLastBotMessage(String chatId) async {
     try {
-      final messages = await ChatMessage().where("chat_id", chatId);
+      final messages = await ChatMessage().where("chat_id", chatId).get();
       var mess = messages.where((e) => e.senderType == SenderType.ai);
 
       return mess.isNotEmpty ? mess.first.message : null;
@@ -640,6 +639,7 @@ Started: ${conversation.startedAt}
       // Load last 5 messages
       final messagesList = await ChatMessage()
           .where("chat_id", "chat_${conversation.id}")
+          .get()
           .asMaps;
       List<AIMessage> aiMessages = messagesList.map((m) {
         final senderType = m["sender_type"];
@@ -684,22 +684,22 @@ Started: ${conversation.startedAt}
   }
 
   /// Notify human staff and save escalation
-  Future<void> _notifyHuman(ChatConversation conversation, String message,
-      String? customerEmail) async {
-    print("_notifyHuman");
-    // Mark conversation as escalated
-    conversation.escalated = true;
-    conversation.staffId = '';
-    conversation.startedAt = DateTime.now();
-    await conversation.save();
-    // Send email
-    await _sendEmailToStaff(
-      subject: "Customer needs human assistance",
-      body:
-          "Customer ${conversation.customerId} sent a message AI couldn't handle:\n\n$message\n\nEmail: ${customerEmail ?? 'N/A'}",
-    );
-    print("_notifyHuman done");
-  }
+  // Future<void> _notifyHuman(ChatConversation conversation, String message,
+  //     String? customerEmail) async {
+  //   print("_notifyHuman");
+  //   // Mark conversation as escalated
+  //   conversation.escalated = true;
+  //   conversation.staffId = '';
+  //   conversation.startedAt = DateTime.now();
+  //   await conversation.save();
+  //   // Send email
+  //   await _sendEmailToStaff(
+  //     subject: "Customer needs human assistance",
+  //     body:
+  //         "Customer ${conversation.customerId} sent a message AI couldn't handle:\n\n$message\n\nEmail: ${customerEmail ?? 'N/A'}",
+  //   );
+  //   print("_notifyHuman done");
+  // }
 
   /// Send email to staff
   Future<void> _sendEmailToStaff(

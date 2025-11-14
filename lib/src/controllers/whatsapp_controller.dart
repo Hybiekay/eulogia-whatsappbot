@@ -61,7 +61,7 @@ class WhatsappController {
 
         // Check if we've already processed this WhatsApp message ID
         final existingMessages =
-            await ChatMessage().where('whatsapp_message_id', messageId);
+            await ChatMessage().where('whatsapp_message_id', messageId).get();
         if (existingMessages.isNotEmpty) {
           print('🔄 Skipping duplicate WhatsApp message: $messageId');
           return res.json({'status': 'duplicate_ignored'});
@@ -119,7 +119,8 @@ class WhatsappController {
   /// Create or get existing conversation
   Future<ChatConversation> _getOrCreateConversation(
       String customerId, String customerName) async {
-    final list = await ChatConversation().where('customer_id', customerId);
+    final list =
+        await ChatConversation().where('customer_id', customerId).get();
     ChatConversation? conversation = list.isNotEmpty ? list.first : null;
 
     if (conversation == null) {
