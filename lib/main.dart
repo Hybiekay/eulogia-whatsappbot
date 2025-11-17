@@ -4,14 +4,14 @@ import 'package:flint_dart/flint_dart.dart';
 import 'package:chatbot/src/routes/whatsapp_routes.dart';
 
 void main() {
-  final app = Flint(withDefaultMiddleware: true);
+  final app = Flint(withDefaultMiddleware: true, viewPath: "lib/src/views/");
 
   app.get('/', (req, res) async {
-    return res.view("lib/src/views/login");
+    return res.view("login");
   });
 
   app.get('/chat', (req, res) async {
-    return res.view("lib/src/views/chat");
+    return res.view("chat");
   });
 
   app.get('/sign-up', (req, res) async {

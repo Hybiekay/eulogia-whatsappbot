@@ -8,6 +8,4 @@ environment:
 
 dependencies:
   flint_dart: ^1.0.0+18
-  charset: ^2.0.1
-  http: ^1.6.0
   

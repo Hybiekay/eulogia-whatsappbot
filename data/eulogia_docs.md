@@ -56,7 +56,7 @@ EuCloudHost is a web hosting and server management platform designed for develop
   - 30 Databases
   - 50 Email Accounts
 - **Slug**: `silver-plan`
-
+*
 ### Gold Plan (EUcluodhost Prestige)
 - **Monthly Price**: $2.50 USD
 - **Description**: A solid option for developers and agencies managing multiple clients

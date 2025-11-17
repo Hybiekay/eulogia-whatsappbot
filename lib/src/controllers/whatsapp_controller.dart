@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:chatbot/src/models/chat_conversation.dart';
 import 'package:chatbot/src/models/chat_message.dart';
 import 'package:chatbot/src/services/whatsapp_welcome_service.dart';
@@ -10,6 +9,7 @@ class WhatsappController {
   final String verifyToken = FlintEnv.get('WHATSAPP_VERIFY_TOKEN');
   final String phoneNumberId = FlintEnv.get('WHATSAPP_PHONE_NUMBER_ID');
   final String accessToken = FlintEnv.get('WHATSAPP_ACCESS_TOKEN');
+  final client = FlintClient(baseUrl: "https://graph.facebook.com/v22.0/");
 
   /// Webhook verification
   Future<Response> verifyWebhook(Request req, Response res) async {
@@ -176,8 +176,7 @@ class WhatsappController {
 
   /// Send WhatsApp message with error handling for 24-hour rule using http package
   Future<void> _sendMessage(String to, String message) async {
-    final url =
-        Uri.parse('https://graph.facebook.com/v22.0/$phoneNumberId/messages');
+    final endpoint = "$phoneNumberId/messages";
     final safeMessage = message.replaceAll('\r', '').replaceAll('₦', 'NGN');
 
     final payload = {
@@ -188,8 +187,8 @@ class WhatsappController {
     };
 
     try {
-      final response = await http.post(
-        url,
+      final response = await client.post(
+        endpoint,
         headers: {
           "Authorization": "Bearer $accessToken",
           "Content-Type": "application/json; charset=UTF-8",
@@ -198,16 +197,8 @@ class WhatsappController {
       );
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        final errorBody = jsonDecode(response.body);
-        final errorCode = errorBody['error']?['code'];
-
-        if (errorCode == 131047) {
-          print(
-              '⚠️ Message failed: 24-hour rule violation. Customer needs to message first.');
-        } else {
-          print(
-              '⚠️ Failed to send message: ${response.statusCode} - ${errorBody['error']?['message']}');
-        }
+        print(
+            "⚠️ Failed to send message: ${response.statusCode} - ${response.error}");
       } else {
         print("✅ Message sent to $to");
       }
