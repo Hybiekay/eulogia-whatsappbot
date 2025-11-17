@@ -15,7 +15,7 @@ void main() {
   });
 
   app.get('/sign-up', (req, res) async {
-    return res.view("lib/src/views/signup");
+    return res.view("signup");
 
 // return
   });
