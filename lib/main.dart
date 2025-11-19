@@ -1,16 +1,13 @@
 import 'package:chatbot/src/routes/api_routes.dart';
 import 'package:chatbot/src/routes/staff_routes.dart';
-import 'package:chatbot/src/views/welcome.dart';
 import 'package:flint_dart/flint_dart.dart';
 import 'package:chatbot/src/routes/whatsapp_routes.dart';
 
 void main() {
   var port = FlintEnv.getInt("PORT", 8080);
   final app = Flint(withDefaultMiddleware: true, viewPath: "lib/src/views/");
+
   app.get('/', (req, res) async {
-    return res.render(Welcome());
-  });
-  app.get('/login', (req, res) async {
     return res.view("login");
   });
 

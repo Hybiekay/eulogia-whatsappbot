@@ -110,11 +110,11 @@
 
                         if (result.status) {
                             // Save JWT token to localStorage
-                            localStorage.setItem('staffToken', result.token);
-                            localStorage.setItem('staffName', this.name);
+                            // localStorage.setItem('staffToken', result.token);
+                            // localStorage.setItem('staffName', this.name);
 
                             alert(`Welcome ${this.name}! Account created successfully.`);
-                            window.location.href = '/dashboard.html'; // redirect to dashboard
+                            window.location.href = '/'; // redirect to dashboard
                         } else {
                             this.error = result.message || 'Signup failed. Please try again.';
                         }
