@@ -1,4 +1,6 @@
 assets:
   - lib/src/views/
+  - data/
+  - docs/
 
 
