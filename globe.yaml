@@ -1,4 +1,4 @@
 assets:
-  - lib/src/views/**
+  - lib/src/views/login.flint.html
   - lib/src/views/css/**
 
