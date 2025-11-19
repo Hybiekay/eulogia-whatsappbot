@@ -1,2 +1,4 @@
 assets:
   - lib/src/views/**
+  - lib/src/views/css/**
+
