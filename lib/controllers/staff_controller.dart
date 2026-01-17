@@ -1,5 +1,5 @@
+import 'package:chatbot/models/user.dart';
 import 'package:flint_dart/flint_dart.dart';
-import '../models/staff.dart';
 
 class StaffController {
   /// 🔹 Staff Signup
@@ -15,7 +15,7 @@ class StaffController {
     print(body);
 
     // Check if staff ID already exists
-    final existing = await Staff().where('staff_id', staffId).first();
+    final existing = await User().where('staff_id', staffId).first();
     if (existing != null) {
       return res.json({'status': false, 'message': 'Staff ID already exists'},
           status: 400);
@@ -25,7 +25,7 @@ class StaffController {
     final hashedPassword = Hashing().hash(body['password']);
 
     // Create staff record
-    final staff = await Staff().create({
+    final staff = await User().create({
       "name": body['name'],
       "staff_id": body['staff_id'],
       "role": "staff",
@@ -65,7 +65,7 @@ class StaffController {
     final staffId = body['staff_id'];
     final password = body['password'];
 
-    final staff = await Staff().where('staff_id', staffId).first();
+    final staff = await User().where('staff_id', staffId).first();
 
     if (staff == null) {
       return res.json({'status': false, 'message': 'Staff not found'});

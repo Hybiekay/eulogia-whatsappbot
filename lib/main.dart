@@ -1,7 +1,7 @@
-import 'package:chatbot/src/routes/api_routes.dart';
-import 'package:chatbot/src/routes/staff_routes.dart';
+import 'package:chatbot/routes/api_routes.dart';
+import 'package:chatbot/routes/staff_routes.dart';
+import 'package:chatbot/routes/whatsapp_routes.dart';
 import 'package:flint_dart/flint_dart.dart';
-import 'package:chatbot/src/routes/whatsapp_routes.dart';
 
 void main() {
   var port = FlintEnv.getInt("PORT", 8080);
@@ -26,9 +26,9 @@ void main() {
   );
 
   // Mount WhatsApp routes
-  app.mount("/whatsapp", whatsappRoute);
-  app.mount("/staff", staffRoute);
-  app.mount("/api", apiRoutes);
+  app.routes(WhatsappRoutes());
+  app.routes(StaffRoutes());
+  app.routes(ApiRoutes());
 
   app.listen(port);
 }

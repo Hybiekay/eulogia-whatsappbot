@@ -1,42 +1,30 @@
 import 'package:flint_dart/model.dart';
 import 'package:flint_dart/schema.dart';
 
-class Staff extends Model<Staff> {
-  int? id;
-  String? staffId; // Unique staff identifier (e.g. STF001)
-  String? name;
-  String? email;
-  String? role;
-  String? password;
-  String? profilePicUrl;
-  DateTime? createdAt;
+class User extends Model<User> {
+  User() : super(() => User());
 
-  @override
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'staff_id': staffId,
-        'name': name,
-        'email': email,
-        'role': role,
-        'profile_pic_url': profilePicUrl,
-        'created_at': createdAt?.toIso8601String(),
-      };
+  // Primary key
+  int? get id => getAttribute<int>('id');
 
-  @override
-  Staff fromMap(Map<dynamic, dynamic> map) => Staff()
-    ..id = map['id']
-    ..staffId = map['staff_id']
-    ..name = map['name']
-    ..email = map['email']
-    ..role = map['role']
-    ..profilePicUrl = map['profile_pic_url']
-    ..password = map['password']
-    ..createdAt =
-        map['created_at'] != null ? DateTime.parse(map['created_at']) : null;
+  // Public user identifier (USR001)
+  String? get userId => getAttribute<String>('user_id');
+
+  // Profile
+  String? get name => getAttribute<String>('name');
+  String? get email => getAttribute<String>('email');
+  String? get role => getAttribute<String>('role'); // admin | staff | client
+  String? get profilePicUrl => getAttribute<String>('profile_pic_url');
+
+  // Security / status
+  String? get password => getAttribute<String>('password');
+  bool get isActive => getAttribute<bool>('is_active') ?? true;
+
+  // Timestamps
 
   @override
   Table get table => Table(
-        name: 'staff',
+        name: 'users',
         columns: [
           Column(
             name: 'id',
@@ -45,7 +33,7 @@ class Staff extends Model<Staff> {
             isAutoIncrement: true,
           ),
           Column(
-            name: 'staff_id',
+            name: 'user_id',
             type: ColumnType.string,
             length: 100,
             isUnique: true,
@@ -59,13 +47,13 @@ class Staff extends Model<Staff> {
             name: 'email',
             type: ColumnType.string,
             length: 255,
-            isNullable: true,
+            isUnique: true,
           ),
           Column(
             name: 'role',
             type: ColumnType.string,
-            length: 100,
-            defaultValue: "staff",
+            length: 50,
+            defaultValue: 'client',
           ),
           Column(
             name: 'password',
@@ -76,6 +64,11 @@ class Staff extends Model<Staff> {
             type: ColumnType.string,
             length: 500,
             isNullable: true,
+          ),
+          Column(
+            name: 'is_active',
+            type: ColumnType.boolean,
+            defaultValue: true,
           ),
         ],
       );

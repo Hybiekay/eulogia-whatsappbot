@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'package:chatbot/src/models/chat_conversation.dart';
-import 'package:chatbot/src/models/chat_message.dart';
-import 'package:chatbot/src/services/whatsapp_welcome_service.dart';
+import 'package:chatbot/models/chat_conversation.dart';
+import 'package:chatbot/models/chat_message.dart';
+import 'package:chatbot/services/whatsapp_welcome_service.dart';
 import 'package:flint_dart/flint_dart.dart';
 
 class WhatsappController {
@@ -108,8 +108,9 @@ class WhatsappController {
     });
 
     // Update conversation
-    conversation.lastMessageAt = DateTime.now();
-    conversation.updatedAt = DateTime.now();
+    conversation.setAttributes({
+      'last_message_at': DateTime.now(),
+    });
     await conversation.save();
 
     // Send reply via WhatsApp
@@ -124,16 +125,17 @@ class WhatsappController {
     ChatConversation? conversation = list.isNotEmpty ? list.first : null;
 
     if (conversation == null) {
-      conversation = ChatConversation()
-        ..customerName = customerName
-        ..customerId = customerId
-        ..escalated = false
-        ..status = 'active'
-        ..staffId = ''
-        ..startedAt = DateTime.now()
-        ..lastMessageAt = DateTime.now()
-        ..createdAt = DateTime.now()
-        ..updatedAt = DateTime.now();
+      conversation = ChatConversation();
+      conversation.setAttributes({
+        'customer_name': customerName,
+        'customer_id': customerId,
+        'escalated': false,
+        'status': 'active',
+        'staff_id': '',
+        'started_at': DateTime.now(),
+        'last_message_at': DateTime.now(),
+      });
+
       return await conversation.save() ?? conversation;
     }
     return conversation;

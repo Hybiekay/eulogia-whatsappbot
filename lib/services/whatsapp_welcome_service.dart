@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:chatbot/src/models/chat_conversation.dart';
-import 'package:chatbot/src/models/chat_message.dart';
+import 'package:chatbot/models/chat_conversation.dart';
+import 'package:chatbot/models/chat_message.dart';
 import 'package:flint_dart/flint_dart.dart';
+import 'package:flint_dart/mail.dart';
 
 final String verifyToken = FlintEnv.get('WHATSAPP_VERIFY_TOKEN');
 final String phoneNumberId = FlintEnv.get('WHATSAPP_PHONE_NUMBER_ID');
@@ -100,7 +101,6 @@ class ChatReplyService {
   final client = FlintClient(baseUrl: "https://graph.facebook.com/v22.0/");
   static String geminiApiKey = FlintEnv.get('GEMINI_API_KEY');
   final aiClient = GeminiProvider(apiKey: geminiApiKey);
-
   Future<String> generateReply(
     String message, {
     required ChatConversation conversation,
@@ -109,118 +109,65 @@ class ChatReplyService {
   }) async {
     final lower = message.trim().toLowerCase();
 
-    // If conversation is closed, reopen it automatically
-    if (conversation.status == 'closed' || conversation.status == 'resolved') {
-      conversation.status = 'active';
-      conversation.lastMessageAt = DateTime.now();
-      conversation.updatedAt = DateTime.now();
-      conversation.customerName = customerName;
-      await conversation.save();
-
-      return """🔄 Welcome back! I've reopened our conversation.
-
-👋 How can I help you today?
-
-You can:
-• Type *menu* to see our products
-• Ask about any of our services
-• Type *close* when you're done""";
+    // 1️⃣ Handle full closing commands first
+    if (_isClosingCommand(lower)) {
+      return await _handleCloseConversation(conversation, lower);
     }
 
-    // Handle "new" command - reset current conversation
+    // 2️⃣ Handle "new" or reset conversation
     if (lower == 'new' || lower == 'new conversation' || lower == 'reset') {
       return await _resetConversation(conversation);
     }
 
-    // Handle conversation closing commands
-    if (_isClosingCommand(lower)) {
-      return await _handleCloseConversation(conversation, message);
-    }
-
-    // Handle satisfaction responses
-    if (_isSatisfactionResponse(lower)) {
-      return await _handleSatisfactionResponse(conversation, lower);
-    }
-
-    // Check for pending conversations first
-    final pendingChats =
-        await _checkPendingConversations(customerId, conversation.id);
-    if (pendingChats.isNotEmpty) {
-      return _handlePendingConversationReply(pendingChats.first, message);
-    }
-
-    // If already escalated to human
+    // 3️⃣ If escalated to human, block AI
     if (conversation.escalated == true) {
+      await ChatMessage().create({
+        'chat_id': conversation.id.toString(),
+        'sender_id': customerId ?? 'unknown',
+        'sender_type': SenderType.human.name,
+        'message': message,
+        'created_at': DateTime.now(),
+      });
+
       await _sendEmailToStaff(
-        subject: "Follow-up from ${customerId ?? 'customer'}",
+        subject: "Follow-up from ${customerName ?? 'customer'}",
         body:
             "Customer message: $message\n\nConversation ID: ${conversation.id}",
       );
-      return "🤖 I've notified our team about your follow-up message. They'll respond shortly.";
+
+      return "🤖 This conversation has been escalated to our support team. They'll respond shortly.";
     }
 
-    // Greetings and menu
-    if (_isGreeting(lower)) {
-      return welcomeService.getReply();
-    }
+    // 4️⃣ Force product selection if not set
+    if (conversation.preference == null) {
+      if (_isProductSelection(lower)) {
+        final productId = _mapToProductId(lower);
+        conversation.setAttributes({
+          'preference': lower,
+          'product_id': productId,
+          'last_message_at': DateTime.now(),
+          'updated_at': DateTime.now(),
+        });
+        await conversation.save();
+        return welcomeService.getProductInfo(lower);
+      } else {
+        return """❗ Please select a product first:
 
-    // Product selection
-    if (_isProductSelection(lower)) {
-      return welcomeService.getProductInfo(lower);
-    }
+1️⃣ EuCloudHost  
+2️⃣ Euvate  
+3️⃣ SchoolHQ.ng  
+4️⃣ Training Class
 
-    // Product-specific follow-up questions
-    if (_isProductFollowUp(
-        lower, await _getLastBotMessage(conversation.id.toString()))) {
-      return _handleProductFollowUp(
-          lower, await _getLastBotMessage(conversation.id.toString()));
-    }
-
-    // Check if message is related to our products
-    final isProductRelated = await _isProductRelatedQuestion(message);
-    if (!isProductRelated) {
-      // Before escalating, ask if they want to close
-      if (_shouldSuggestClosing(message)) {
-        return """🤖 I specialize in helping with *Eulogia Technologies* products. 
-
-It seems you're asking about something outside our services. 
-
-Would you like to:
-• Type *menu* to see our products
-• Type *close* to end this conversation
-• Contact us at hello@eulogiatech.com for other inquiries""";
+Reply with the product number or name.""";
       }
     }
 
-    // Try AI for product-related questions
+    // 5️⃣ Now it's safe to send to AI
     final aiReply = await _askGemini(message, conversation);
 
     if (aiReply == null || aiReply.trim().isEmpty) {
       await _escalateToHuman(conversation, message, customerName);
-      return """🤖 I'm connecting you with our specialist who can better assist with your query. 
-
-They'll respond within a few minutes. 
-
-In the meantime, you can also:
-• Type *menu* to see our products
-• Visit our website: eulogiatech.com""";
-    }
-
-    // Check if AI suggests human escalation
-    if (_shouldEscalateToHuman(aiReply)) {
-      await _escalateToHuman(conversation, message, customerName);
-      return aiReply;
-    }
-
-    // After helpful response, ask if they need more help
-    if (_shouldAskForSatisfaction(aiReply)) {
-      return """$aiReply
-
----
-✅ Was that helpful? Reply:
-• *Yes* - if your question is answered
-• *No* - if you need more help
-• *Close* - to end the conversation""";
+      return "🤖 I've forwarded your message to our specialist. They'll respond shortly.";
     }
 
     return aiReply;
@@ -244,6 +191,29 @@ In the meantime, you can also:
     return closingCommands.contains(message);
   }
 
+  String _mapToProductId(String selection) {
+    switch (selection.toLowerCase()) {
+      case '1':
+      case 'eucloudhost':
+      case 'cloud hosting':
+        return 'eucloudhost';
+      case '2':
+      case 'euvate':
+      case 'voting':
+        return 'euvate';
+      case '3':
+      case 'schoolhq.ng':
+      case 'school':
+        return 'schoolhq';
+      case '4':
+      case 'training class':
+      case 'training':
+        return 'training';
+      default:
+        return 'unknown';
+    }
+  }
+
   bool _isSatisfactionResponse(String message) {
     final satisfactionResponses = [
       'yes',
@@ -261,41 +231,6 @@ In the meantime, you can also:
       'great'
     ];
     return satisfactionResponses.contains(message);
-  }
-
-  Future<String> _handleCloseConversation(
-      ChatConversation conversation, String message) async {
-    // Ask for confirmation before closing
-    if (!message.toLowerCase().contains('confirm')) {
-      return """🔒 Are you sure you want to close this conversation?
-
-This will end our chat session. You can always message again to start a new conversation.
-
-Reply:
-• *Confirm close* - to close the conversation
-• *Menu* - to continue browsing our products
-• *No* - to keep chatting""";
-    }
-
-    // Close the conversation
-    conversation.status = 'closed';
-    conversation.escalated = false;
-    conversation.staffId = null;
-    conversation.lastMessageAt = DateTime.now();
-    conversation.updatedAt = DateTime.now();
-    await conversation.save();
-
-    return """✅ Conversation closed. Thank you for chatting with *Eulogia Technologies*! 
-
-We're here to help with:
-☁️ EuCloudHost - Cloud Hosting
-🗳️ Euvate - Voting Platform  
-🏫 SchoolHQ.ng - School Management
-🎓 Training Class - Courses
-
-*Need help again?* Just send any message to reopen this conversation.
-
-Have a great day! 🌟""";
   }
 
   Future<String> _handleSatisfactionResponse(
@@ -359,13 +294,15 @@ I'm here to help you find the right solution!""";
         !aiReply.toLowerCase().contains('escalate');
   }
 
+// Reset conversation
   Future<String> _resetConversation(ChatConversation conversation) async {
-    // Reset the conversation but keep it active
-    conversation.escalated = false;
-    conversation.staffId = null;
-    conversation.status = 'active';
-    conversation.lastMessageAt = DateTime.now();
-    conversation.updatedAt = DateTime.now();
+    conversation.setAttributes({
+      'escalated': false,
+      'staff_id': null,
+      'status': 'active',
+      'last_message_at': DateTime.now(),
+      'updated_at': DateTime.now(),
+    });
 
     await conversation.save();
 
@@ -382,6 +319,31 @@ Choose a product:
 Reply with the product number or name.
 
 Type *close* anytime to end the conversation.""";
+  }
+
+// Close conversation
+  Future<String> _handleCloseConversation(
+      ChatConversation conversation, String message) async {
+    // Confirm close
+    if (!message.toLowerCase().contains('confirm')) {
+      return """🔒 Are you sure you want to close this conversation?
+
+Reply:
+• *Confirm close* - to close the conversation
+• *Menu* - to continue browsing our products
+• *No* - to keep chatting""";
+    }
+
+    conversation.setAttributes({
+      'status': 'closed',
+      'escalated': false,
+      'staff_id': null,
+      'last_message_at': DateTime.now(),
+      'updated_at': DateTime.now(),
+    });
+    await conversation.save();
+
+    return """✅ Conversation closed. Thank you for chatting with *Eulogia Technologies*!""";
   }
 
   Future<List<ChatConversation>> _checkPendingConversations(
@@ -601,8 +563,8 @@ Please include your account details for faster resolution.""";
       ChatConversation conversation, String message, String? email) async {
     try {
       // Update conversation to escalated
-      conversation.escalated = true;
-      conversation.updatedAt = DateTime.now();
+      conversation.setAttributes({'escalated': true});
+
       await conversation.save();
 
       await _sendEmailToStaff(
